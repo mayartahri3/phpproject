@@ -44,6 +44,7 @@ function sanitize($data) {
 /**
  * Affiche un message d'erreur
  * @param string $message
+ * @return string
  */
 function showError($message) {
     return "<div class='alert alert-danger'>$message</div>";
@@ -52,6 +53,7 @@ function showError($message) {
 /**
  * Affiche un message de succès
  * @param string $message
+ * @return string
  */
 function showSuccess($message) {
     return "<div class='alert alert-success'>$message</div>";
@@ -62,19 +64,31 @@ function showSuccess($message) {
  * @return string
  */
 function generateCSRFToken() {
-    if (!isset($_SESSION['csrf_token'])) {
+    if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
     return $_SESSION['csrf_token'];
 }
 
-/**
- * Vérifie si le jeton CSRF est valide
- * @param string $token
- * @return bool
- */
-function validateCSRFToken($token) {
-    return isset($_SESSION['csrf_token']) && $_SESSION['csrf_token'] === $token;
+function verifyCSRFToken($token) {
+    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
+        return false;
+    }
+    return true;
+}
+// In ../includes/functions.php
+function emailExists($pdo, $email, $excludeUserId = null) {
+    $query = "SELECT COUNT(*) FROM users WHERE email = ?";
+    if ($excludeUserId !== null) {
+        $query .= " AND id != ?";
+    }
+    $stmt = $pdo->prepare($query);
+    if ($excludeUserId !== null) {
+        $stmt->execute([$email, $excludeUserId]);
+    } else {
+        $stmt->execute([$email]);
+    }
+    return $stmt->fetchColumn() > 0;
 }
 
 /**

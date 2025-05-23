@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET' && !isAdmin()) {
     exit;
 }
 
+
 // Traitement des requêtes
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Les utilisateurs normaux ne peuvent voir que leur propre profil

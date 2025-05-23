@@ -13,7 +13,7 @@ $success = '';
 // Traitement des actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // Vérification du jeton CSRF
-    if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = 'Erreur de sécurité. Veuillez réessayer.';
     } else {
         $requestId = $_POST['request_id'] ?? 0;

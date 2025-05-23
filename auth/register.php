@@ -17,7 +17,7 @@ $success = '';
 // Traitement du formulaire d'inscription
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Vérification du jeton CSRF
-    if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = 'Erreur de sécurité. Veuillez réessayer.';
     } else {
         $nom = sanitize($_POST['nom'] ?? '');

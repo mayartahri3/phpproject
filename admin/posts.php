@@ -10,10 +10,39 @@ if (!isLoggedIn() || !isAdmin()) {
 $error = '';
 $success = '';
 
+// Récupérer tous les formateurs pour la liste déroulante
+function getFormateurs($pdo) {
+    try {
+        $stmt = $pdo->query("SELECT id, nom FROM formateurs ORDER BY nom ASC");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching formateurs: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Fonction modifiée pour récupérer les posts avec les noms des formateurs
+function getPostsWithFormateurs($pdo) {
+    try {
+        $stmt = $pdo->query("
+            SELECT p.*, f.nom as formateur_nom 
+            FROM posts p 
+            LEFT JOIN formateurs f ON p.formateur_id = f.id 
+            ORDER BY p.date_publication DESC
+        ");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching posts: " . $e->getMessage());
+        return [];
+    }
+}
+
+$formateurs = getFormateurs($pdo);
+
 // Traitement des actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Vérification du jeton CSRF
-    if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = 'Erreur de sécurité. Veuillez réessayer.';
     } else {
         $action = $_POST['action'] ?? '';
@@ -23,13 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $titre = sanitize($_POST['titre'] ?? '');
             $contenu = sanitize($_POST['contenu'] ?? '');
             $type = $_POST['type'] ?? '';
+            $formateurId = $_POST['formateur_id'] ?? null;
             
-            if (empty($titre) || empty($contenu) || empty($type)) {
+            if (empty($titre) || empty($contenu) || empty($type) || empty($formateurId)) {
                 $error = 'Tous les champs sont obligatoires.';
             } else {
-                $stmt = $pdo->prepare("INSERT INTO posts (titre, contenu, type) VALUES (?, ?, ?)");
+                $stmt = $pdo->prepare("INSERT INTO posts (titre, contenu, type, formateur_id) VALUES (?, ?, ?, ?)");
                 
-                if ($stmt->execute([$titre, $contenu, $type])) {
+                if ($stmt->execute([$titre, $contenu, $type, $formateurId])) {
                     $success = 'Le post a été créé avec succès.';
                 } else {
                     $error = 'Une erreur est survenue. Veuillez réessayer.';
@@ -41,13 +71,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $titre = sanitize($_POST['titre'] ?? '');
             $contenu = sanitize($_POST['contenu'] ?? '');
             $type = $_POST['type'] ?? '';
+            $formateurId = $_POST['formateur_id'] ?? null;
             
-            if (empty($titre) || empty($contenu) || empty($type)) {
+            if (empty($titre) || empty($contenu) || empty($type) || empty($formateurId)) {
                 $error = 'Tous les champs sont obligatoires.';
             } else {
-                $stmt = $pdo->prepare("UPDATE posts SET titre = ?, contenu = ?, type = ? WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE posts SET titre = ?, contenu = ?, type = ?, formateur_id = ? WHERE id = ?");
                 
-                if ($stmt->execute([$titre, $contenu, $type, $postId])) {
+                if ($stmt->execute([$titre, $contenu, $type, $formateurId, $postId])) {
                     $success = 'Le post a été mis à jour avec succès.';
                 } else {
                     $error = 'Une erreur est survenue. Veuillez réessayer.';
@@ -68,8 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Récupérer tous les posts
-$posts = getPosts($pdo);
+// Récupérer tous les posts avec les formateurs
+$posts = getPostsWithFormateurs($pdo);
 ?>
 
 <!DOCTYPE html>
@@ -114,8 +145,19 @@ $posts = getPosts($pdo);
                     <div class="form-group">
                         <label for="type">Type</label>
                         <select id="type" name="type" required>
+                            <option value="">Sélectionnez un type</option>
                             <option value="en cours">Formation en cours</option>
                             <option value="à venir">Formation à venir</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="formateur_id">Formateur</label>
+                        <select id="formateur_id" name="formateur_id" required>
+                            <option value="">Sélectionnez un formateur</option>
+                            <?php foreach ($formateurs as $formateur): ?>
+                                <option value="<?= $formateur['id'] ?>"><?= htmlspecialchars($formateur['nom']) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     
@@ -136,6 +178,7 @@ $posts = getPosts($pdo);
                             <tr>
                                 <th>Titre</th>
                                 <th>Type</th>
+                                <th>Formateur</th>
                                 <th>Date de Publication</th>
                                 <th>Actions</th>
                             </tr>
@@ -143,15 +186,23 @@ $posts = getPosts($pdo);
                         <tbody>
                             <?php foreach ($posts as $post): ?>
                                 <tr>
-                                    <td><?= $post['titre'] ?></td>
+                                    <td><?= htmlspecialchars($post['titre']) ?></td>
                                     <td>
-                                        <span class="status-badge status-<?= $post['type'] ?>">
+                                        <span class="status-badge status-<?= str_replace(' ', '-', $post['type']) ?>">
                                             <?= $post['type'] === 'en cours' ? 'En cours' : 'À venir' ?>
                                         </span>
                                     </td>
+                                    <td><?= htmlspecialchars($post['formateur_nom'] ?? 'Non assigné') ?></td>
                                     <td><?= date('d/m/Y', strtotime($post['date_publication'])) ?></td>
                                     <td>
-                                        <button class="btn btn-small btn-edit" data-id="<?= $post['id'] ?>" data-titre="<?= htmlspecialchars($post['titre']) ?>" data-contenu="<?= htmlspecialchars($post['contenu']) ?>" data-type="<?= $post['type'] ?>">Modifier</button>
+                                        <button class="btn btn-small btn-edit" 
+                                                data-id="<?= $post['id'] ?>" 
+                                                data-titre="<?= htmlspecialchars($post['titre']) ?>" 
+                                                data-contenu="<?= htmlspecialchars($post['contenu']) ?>" 
+                                                data-type="<?= $post['type'] ?>"
+                                                data-formateur="<?= $post['formateur_id'] ?>">
+                                            Modifier
+                                        </button>
                                         
                                         <form method="POST" action="" class="inline-form">
                                             <input type="hidden" name="csrf_token" value="<?= generateCSRFToken() ?>">
@@ -196,6 +247,16 @@ $posts = getPosts($pdo);
                         </div>
                         
                         <div class="form-group">
+                            <label for="edit-formateur">Formateur</label>
+                            <select id="edit-formateur" name="formateur_id" required>
+                                <option value="">Sélectionnez un formateur</option>
+                                <?php foreach ($formateurs as $formateur): ?>
+                                    <option value="<?= $formateur['id'] ?>"><?= htmlspecialchars($formateur['nom']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
                             <button type="submit" name="action" value="update">Mettre à jour</button>
                         </div>
                     </form>
@@ -204,6 +265,44 @@ $posts = getPosts($pdo);
         </div>
     </div>
     
-    <script src="../assets/js/admin.js"></script>
+    <script>
+        // Enhanced admin.js functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('edit-modal');
+            const closeBtn = document.querySelector('.close');
+            const editButtons = document.querySelectorAll('.btn-edit');
+            
+            // Open modal when edit button is clicked
+            editButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.getAttribute('data-id');
+                    const titre = this.getAttribute('data-titre');
+                    const contenu = this.getAttribute('data-contenu');
+                    const type = this.getAttribute('data-type');
+                    const formateurId = this.getAttribute('data-formateur');
+                    
+                    document.getElementById('edit-post-id').value = id;
+                    document.getElementById('edit-titre').value = titre;
+                    document.getElementById('edit-contenu').value = contenu;
+                    document.getElementById('edit-type').value = type;
+                    document.getElementById('edit-formateur').value = formateurId;
+                    
+                    modal.style.display = 'block';
+                });
+            });
+            
+            // Close modal when close button is clicked
+            closeBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+            });
+            
+            // Close modal when clicking outside of it
+            window.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
